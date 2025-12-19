@@ -1,0 +1,7 @@
+{
+    "name": "Canari Detection",
+    "route": "/admin/ctfd-canari-detection",
+    "title": "CTFD-canari-detection",
+    "description": "Plugin permettant de détecter des soumissions CTFd potentiellement malveillantes",
+    "author": "Hack'olyte"
+}

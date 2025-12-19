@@ -1,0 +1,799 @@
+{% extends "admin/base.html" %}
+
+{% block content %}
+<div class="jumbotron">
+    <div class="container">
+        <h1>🐥Canari Détection</h1>
+        <p class="lead">Surveillez et analysez les soumissions contenant des mots suspects</p>
+         <p><a href="https://hackolyte.fr/">
+      <img src="https://hackolyte.fr/wp-content/uploads/2024/09/cropped-cropped-logo.png" alt="Hack'olyte logo" style="height: 30px; vertical-align: middle; margin-right: 5px;">
+    </a>
+    Plugin développé par l'association <a href="https://hackolyte.fr/">Hack'olyte</a> - v1.0</p>
+    </div>
+</div>
+
+<div class="container mt-4">
+    <!-- Stats Cards -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card bg-danger text-white" title="Nombre d'alertes de mots interdits détectés et non encore acquittées">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <i class="fas fa-exclamation-triangle fa-2x mr-3"></i>
+                    <div>
+                        <h5 class="card-title mb-0">{{ alerts|length }}</h5>
+                        <small>Alertes Actives</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-warning text-white" title="Nombre total de mots actuellement surveillés dans les soumissions">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <i class="fas fa-ban fa-2x mr-3"></i>
+                    <div>
+                        <h5 class="card-title mb-0">{{ forbidden_words|length }}</h5>
+                        <small>Mots Surveillés</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-info text-white" title="ID de la dernière soumission analysée par le système de détection">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <i class="fas fa-database fa-2x mr-3"></i>
+                    <div>
+                        <h5 class="card-title mb-0">{{ last_submission_id }}</h5>
+                        <small>Id du dernier Submit Analysé</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-success text-white" title="Nombre de nouvelles soumissions analysées lors de la dernière détection">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <i class="fas fa-chart-line fa-2x mr-3"></i>
+                    <div>
+                        <h5 class="card-title mb-0">{{ last_check_count or 0 }}</h5>
+                        <small>Dernière Analyse</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+    <!-- Action Banner -->
+    <div class="alert alert-info mb-4">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <i class="fas fa-info-circle mr-2"></i>
+                <strong>Détection:</strong> Cliquez sur "Lancer Détection" pour analyser les nouvelles soumissions
+            </div>
+            <div>
+                <button id="checkSubmissions" class="btn btn-primary mr-2">
+                    <i class="fas fa-play"></i> Lancer Détection
+                </button>
+                <button id="fullAnalysis" class="btn btn-warning">
+                    <i class="fas fa-search-plus"></i> Analyser Tout
+                </button>
+            </div>
+        </div>
+        <div id="detectionResult" class="mt-2" style="display: none;"></div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <ul class="nav nav-tabs nav-justified mb-4">
+        <li class="nav-item">
+            <a class="nav-link {{ 'active' if not show_acknowledged else '' }}" data-toggle="tab" href="#alerts" id="alertsTab">
+                <i class="fas fa-exclamation-triangle mr-1"></i> Alertes
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link {{ 'active' if show_acknowledged else '' }}" data-toggle="tab" href="#config" id="configTab">
+                <i class="fas fa-list mr-1"></i> Mots à Surveiller
+            </a>
+        </li>
+    </ul>
+
+    <div class="tab-content">
+        <!-- Onglet Alertes -->
+        <div id="alerts" class="tab-pane fade {{ 'show active' if not show_acknowledged else '' }}">
+            <h3><i class="fas fa-exclamation-triangle text-danger mr-2"></i>Activités Suspectes</h3>
+            
+            <!-- Filtres -->
+            <div class="row mb-3">
+                <div class="col-md-12 d-flex justify-content-end">
+                    <div class="input-group mr-2" style="max-width: 400px;">
+                        <div class="input-group-prepend">
+                            <span class="input-group-text"><i class="fas fa-search"></i></span>
+                        </div>
+                        <input type="text" class="form-control" id="searchAlerts" placeholder="Rechercher par utilisateur ou mot détecté...">
+                    </div>
+                    <div class="btn-group">
+                        <a href="/admin/ctfd-canari-detection" class="btn {{ 'btn-primary' if not show_acknowledged else 'btn-outline-primary' }}">Actives</a>
+                        <a href="/admin/ctfd-canari-detection?show_acknowledged=true" class="btn {{ 'btn-primary' if show_acknowledged else 'btn-outline-primary' }}">Acquittées</a>
+                    </div>
+                </div>
+            </div>
+                        
+            {% if alerts %}
+            <div class="card">
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="thead-dark">
+                                <tr>
+                                    <th><i class="fas fa-user mr-1"></i>Utilisateur</th>
+                                    <th><i class="fas fa-users mr-1"></i>Équipe</th>
+                                    <th><i class="fas fa-exclamation-circle mr-1"></i>Mot Détecté</th>
+                                    <th><i class="fas fa-flag mr-1"></i>Challenge</th>
+                                    <th><i class="fas fa-clock mr-1"></i>Heure du submit</th>
+                                    <th><i class="fas fa-cogs mr-1"></i>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="alertsTableBody">
+                                {% for alert in alerts %}
+                                <tr class="alert-row" data-user="{{ (alert.user.name if alert.user else 'Utilisateur Inconnu')|lower }}" data-word="{{ alert.word|lower }}" data-team="{{ (alert.team.name if alert.team else '')|lower }}">
+                                    <td>
+                                        <strong>{{ (alert.user.name if alert.user else 'Utilisateur Inconnu') | e }}</strong>
+                                        <br><small class="text-muted">ID: {{ alert.user_id if alert.user_id else 'N/A' }}</small>
+                                    </td>
+                                    <td>
+                                        {% if alert.team %}
+                                        <span class="badge badge-info">{{ alert.team.name | e }}</span>
+                                        {% else %}
+                                        <span class="badge badge-secondary">Individuel</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <span class="badge badge-danger font-weight-bold">{{ alert.word | e }}</span>
+                                        <br><small class="text-muted">Correspondance exacte</small>
+                                    </td>
+                                    <td>
+                                        {% if alert.submission and alert.submission.challenge %}
+                                        <span class="badge badge-info">{{ alert.submission.challenge.name | e }}</span>
+                                        {% else %}
+                                        <span class="badge badge-secondary">N/A</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if alert.submission and alert.submission.date %}
+                                        <strong>{{ alert.submission.date.strftime('%d/%m/%Y') }}</strong>
+                                        <br><small class="text-muted">{{ alert.submission.date.strftime('%H:%M:%S') }}</small>
+                                        {% else %}
+                                        <strong>{{ alert.timestamp.strftime('%d/%m/%Y') if alert.timestamp else 'N/A' }}</strong>
+                                        <br><small class="text-muted">{{ alert.timestamp.strftime('%H:%M:%S') if alert.timestamp else 'N/A' }}</small>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if not show_acknowledged %}
+                                        <button class="btn btn-outline-success btn-sm acknowledge-alert" data-alert-id="{{ alert.id }}" title="Acquitter">
+                                            <i class="fas fa-check"></i>
+                                        </button>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <div class="alert alert-success text-center py-5">
+                <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
+                <h4>Aucune activité suspecte active</h4>
+                <p class="text-muted">Toutes les soumissions sont conformes aux règles établies.</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Onglet Mots à Surveiller -->
+        <div id="config" class="tab-pane fade {{ 'show active' if show_acknowledged else '' }}">
+            <h3><i class="fas fa-list text-primary mr-2"></i>Mots à Surveiller</h3>
+            
+            <!-- Section Ajouter un mot -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5><i class="fas fa-plus mr-1"></i>Ajouter un ou Plusieurs Mots</h5>
+                </div>
+                <div class="card-body">
+                    <form id="addWordForm">
+                        <div class="form-group">
+                            <label for="word">Mots à surveiller</label>
+                            <textarea class="form-control" name="word" id="word" rows="3" placeholder="Entrez un ou plusieurs mots séparés par des points-virgules (;)&#10;Exemple: password;admin;root;secret" required></textarea>
+                            <small class="form-text text-muted">
+                                <i class="fas fa-info-circle mr-1"></i>
+                                Vous pouvez ajouter plusieurs mots en une fois en les séparant par des points-virgules (;)
+                            </small>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="fas fa-plus mr-1"></i> Ajouter à la Surveillance
+                        </button>
+                    </form>
+                </div>
+            </div>
+            
+            <!-- Section Mots Surveillés -->
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5><i class="fas fa-list mr-1"></i>Mots Actuellement Surveillés</h5>
+                    <div class="input-group" style="width: 300px;">
+                        <input type="text" class="form-control" id="searchWords" placeholder="Rechercher...">
+                        <div class="input-group-append">
+                            <span class="input-group-text"><i class="fas fa-search"></i></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <em class="text-muted">
+                            <i class="fas fa-info-circle mr-1"></i>
+                            <span id="wordsCount">{{ forbidden_words|length }}</span> mot(s) actuellement surveillé(s)
+                        </em>
+                    </div>
+                    
+                    <div id="wordsContainer">
+                        {% if forbidden_words %}
+                        <div class="words-scroll-container" style="max-height: 300px; overflow-y: auto;">
+                            <div class="row" id="wordsGrid">
+                                {% for word in forbidden_words %}
+                                <div class="col-md-4 mb-3 word-item" data-word="{{ word.word|lower }}">
+                                    <div class="card border-left-danger">
+                                        <div class="card-body p-3">
+                                            <div class="d-flex justify-content-between align-items-start">
+                                                <div class="flex-grow-1">
+                                                    <h6 class="mb-1">
+                                                        <span class="badge badge-danger font-weight-bold">{{ word.word | e }}</span>
+                                                    </h6>
+                                                    <small class="text-muted">
+                                                        <i class="fas fa-calendar-alt mr-1"></i>
+                                                        Ajouté le {{ word.created_at.strftime('%d/%m/%Y à %H:%M') if word.created_at else 'Date inconnue' }}
+                                                    </small>
+                                                </div>
+                                                <button class="btn btn-outline-danger btn-sm delete-word" data-word="{{ word.word }}" title="Supprimer">
+                                                    <i class="fas fa-trash"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% else %}
+                        <div class="text-center py-5" id="noWordsMessage">
+                            <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+                            <h5 class="text-muted">Aucun mot surveillé</h5>
+                            <p class="text-muted">Ajoutez votre premier mot à surveiller ci-dessus</p>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block styles %}
+<style>
+* {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+}
+
+.jumbotron {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    margin-bottom: 0;
+}
+
+.nav-tabs .nav-link {
+    cursor: pointer;
+}
+
+.card {
+    box-shadow: 0 0.125rem 0.25rem rgba(0,0,0,.075);
+    transition: all 0.2s ease-in-out;
+}
+
+.card:hover {
+    box-shadow: 0 0.5rem 1rem rgba(0,0,0,.15);
+}
+
+.border-left-danger {
+    border-left: 4px solid #dc3545 !important;
+}
+
+.word-item.hidden {
+    display: none;
+}
+
+.word-item .card:hover {
+    transform: translateY(-2px);
+}
+
+.alert-row.hidden {
+    display: none;
+}
+
+.words-scroll-container {
+    max-height: 300px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    border: 1px solid #e3e6f0;
+    border-bottom: none;
+    border-radius: 0.35rem;
+    padding: 15px;
+    background-color: #f8f9fc;
+    width: 100%;
+}
+
+.words-scroll-container::-webkit-scrollbar {
+    width: 8px;
+}
+
+.words-scroll-container::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+}
+
+.words-scroll-container::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 10px;
+}
+
+.words-scroll-container::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+
+    
+    
+    // Simple API call function
+    function makeApiCall(data) {
+        var csrfToken = window.init.csrfNonce;
+        return fetch('/admin/ctfd-canari-detection/api', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/json',
+                'CSRF-Token': csrfToken
+            },
+            body: JSON.stringify(data)
+        }).then(function(response) {
+            return response.json();
+        });
+    }
+    
+    // Function to show messages
+    function showMessage(message, type) {
+        type = type || 'info';
+        var alertClass = type === 'error' ? 'danger' : type;
+        
+        var alertDiv = document.createElement('div');
+        alertDiv.className = 'alert alert-' + alertClass + ' alert-dismissible fade show';
+        alertDiv.setAttribute('role', 'alert');
+        
+        var icon = document.createElement('i');
+        icon.className = 'fas fa-info-circle mr-2';
+        
+        var textNode = document.createTextNode(message); 
+        
+        var closeBtn = document.createElement('button');
+        closeBtn.type = 'button';
+        closeBtn.className = 'close';
+        closeBtn.setAttribute('data-dismiss', 'alert');
+        closeBtn.innerHTML = '<span>&times;</span>';
+        
+        alertDiv.appendChild(icon);
+        alertDiv.appendChild(textNode);
+        alertDiv.appendChild(closeBtn);
+        
+        var container = document.querySelector('#addWordForm').parentNode;
+        container.insertAdjacentElement('afterend', alertDiv);
+        
+        setTimeout(function() {
+            if (alertDiv.parentNode) {
+                alertDiv.remove();
+            }
+        }, 4000);
+    }
+    
+    // Function to add words to the grid dynamically
+    function addWordsToGrid(words) {
+        var wordsContainer = document.getElementById('wordsContainer');
+        var wordsGrid = document.getElementById('wordsGrid');
+        var noWordsMessage = document.getElementById('noWordsMessage');
+        
+        if (noWordsMessage) {
+            noWordsMessage.style.display = 'none';
+        }
+        
+        if (!wordsGrid) {
+            var gridHtml = '<div class="words-scroll-container" style="max-height: 300px; overflow-y: auto;">' +
+                        '<div class="row" id="wordsGrid"></div>' +
+                        '</div>';
+            wordsContainer.innerHTML = gridHtml;
+            wordsGrid = document.getElementById('wordsGrid');
+        }
+        
+        var currentDate = new Date().toLocaleDateString('fr-FR') + ' à ' + new Date().toLocaleTimeString('fr-FR', {hour: '2-digit', minute: '2-digit'});
+        
+        words.forEach(function(word) {
+            var colDiv = document.createElement('div');
+            colDiv.className = 'col-md-4 mb-3 word-item';
+            colDiv.setAttribute('data-word', word.toLowerCase());
+            
+            var cardDiv = document.createElement('div');
+            cardDiv.className = 'card border-left-danger';
+            
+            var cardBody = document.createElement('div');
+            cardBody.className = 'card-body p-3';
+            
+            var flexDiv = document.createElement('div');
+            flexDiv.className = 'd-flex justify-content-between align-items-start';
+            
+            var contentDiv = document.createElement('div');
+            contentDiv.className = 'flex-grow-1';
+            
+            var h6 = document.createElement('h6');
+            h6.className = 'mb-1';
+            
+            var badge = document.createElement('span');
+            badge.className = 'badge badge-danger font-weight-bold';
+            badge.textContent = word; 
+            
+            var small = document.createElement('small');
+            small.className = 'text-muted';
+            small.innerHTML = '<i class="fas fa-calendar-alt mr-1"></i>Ajouté le ' + currentDate;
+            
+            var deleteBtn = document.createElement('button');
+            deleteBtn.className = 'btn btn-outline-danger btn-sm delete-word';
+            deleteBtn.setAttribute('data-word', word);
+            deleteBtn.title = 'Supprimer';
+            deleteBtn.innerHTML = '<i class="fas fa-trash"></i>';
+            
+            // Assembler
+            h6.appendChild(badge);
+            contentDiv.appendChild(h6);
+            contentDiv.appendChild(small);
+            flexDiv.appendChild(contentDiv);
+            flexDiv.appendChild(deleteBtn);
+            cardBody.appendChild(flexDiv);
+            cardDiv.appendChild(cardBody);
+            colDiv.appendChild(cardDiv);
+            
+            wordsGrid.appendChild(colDiv);
+        });
+        
+        // Update counters
+        var wordsCounter = document.getElementById('wordsCount');
+        var cardCounter = document.querySelector('.bg-warning .card-title');
+        
+        if (wordsCounter) {
+            var currentCount = parseInt(wordsCounter.textContent);
+            wordsCounter.textContent = currentCount + words.length;
+        }
+        if (cardCounter) {
+            var currentCount = parseInt(cardCounter.textContent);
+            cardCounter.textContent = currentCount + words.length;
+        }
+        
+        attachDeleteEvents();
+    }
+    
+    // Function to attach delete events
+    function attachDeleteEvents() {
+        var deleteButtons = document.querySelectorAll('.delete-word');
+        deleteButtons.forEach(function(button) {
+            button.removeEventListener('click', handleDelete);
+            button.addEventListener('click', handleDelete);
+        });
+    }
+    
+    // Handle delete
+    function handleDelete(e) {
+        var word = this.getAttribute('data-word');
+        
+        if (!confirm('Êtes-vous sûr de vouloir retirer "' + word + '" de la surveillance ?')) {
+            return;
+        }
+        
+        var wordElement = this.closest('.word-item');
+        
+        makeApiCall({
+            action: 'delete',
+            word: word
+        }).then(function(response) {
+            if (response.success) {
+                wordElement.remove();
+                
+                // Update counters
+                var wordsCounter = document.getElementById('wordsCount');
+                var cardCounter = document.querySelector('.bg-warning .card-title');
+                
+                if (wordsCounter) {
+                    var currentCount = parseInt(wordsCounter.textContent);
+                    wordsCounter.textContent = Math.max(0, currentCount - 1);
+                }
+                if (cardCounter) {
+                    var currentCount = parseInt(cardCounter.textContent);
+                    cardCounter.textContent = Math.max(0, currentCount - 1);
+                }
+                
+                // Show no words message if empty
+                var remainingWords = document.querySelectorAll('.word-item');
+                if (remainingWords.length === 0) {
+                    var wordsContainer = document.getElementById('wordsContainer');
+                    wordsContainer.innerHTML = '<div class="text-center py-5" id="noWordsMessage">' +
+                                              '<i class="fas fa-inbox fa-3x text-muted mb-3"></i>' +
+                                              '<h5 class="text-muted">Aucun mot surveillé</h5>' +
+                                              '<p class="text-muted">Ajoutez votre premier mot à surveiller ci-dessus</p>' +
+                                              '</div>';
+                }
+                
+                showMessage('Mot "' + word + '" supprimé avec succès', 'success');
+            } else {
+                showMessage('Erreur: ' + response.message, 'error');
+            }
+        }).catch(function() {
+            showMessage('Erreur lors de la suppression du mot', 'error');
+        });
+    }
+    
+    // Add word form - Support multiple words with dynamic display
+    var addWordForm = document.getElementById('addWordForm');
+    if (addWordForm) {
+        addWordForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            var wordInput = document.getElementById('word');
+            var wordsText = wordInput.value.trim();
+            
+            if (!wordsText) return;
+            
+            // Séparer les mots par point-virgule et nettoyer
+            var words = wordsText.split(';').map(function(word) {
+                return word.trim();
+            }).filter(function(word) {
+                return word.length > 0;
+            });
+            
+            if (words.length === 0) return;
+            
+            var submitBtn = this.querySelector('button[type="submit"]');
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Ajout en cours...';
+            submitBtn.disabled = true;
+            
+            makeApiCall({
+                action: 'add_multiple',
+                words: words
+            }).then(function(response) {
+                submitBtn.innerHTML = '<i class="fas fa-plus mr-1"></i> Ajouter à la Surveillance';
+                submitBtn.disabled = false;
+                
+                if (response.success) {
+                    wordInput.value = '';
+                    
+                    // Add successful words dynamically
+                    if (response.added_words && response.added_words.length > 0) {
+                        addWordsToGrid(response.added_words);
+                    }
+                    
+                    showMessage(response.message, 'success');
+                } else {
+                    showMessage('Erreur: ' + response.message, 'error');
+                }
+            }).catch(function() {
+                submitBtn.innerHTML = '<i class="fas fa-plus mr-1"></i> Ajouter à la Surveillance';
+                submitBtn.disabled = false;
+                showMessage('Erreur lors de l\'ajout des mots', 'error');
+            });
+        });
+    }
+    
+    // Delete word buttons - use dynamic attachment
+    attachDeleteEvents();
+    
+    // Acknowledge alert buttons
+    var acknowledgeButtons = document.querySelectorAll('.acknowledge-alert');
+    for (var i = 0; i < acknowledgeButtons.length; i++) {
+        acknowledgeButtons[i].addEventListener('click', function(e) {
+            var alertId = this.getAttribute('data-alert-id');
+            
+            makeApiCall({
+                action: 'acknowledge',
+                alert_id: alertId
+            }).then(function(response) {
+                location.reload();
+            }).catch(function() {
+                location.reload();
+            });
+        });
+    }
+    
+    // Check submissions button with feedback
+    var checkSubmissionsBtn = document.getElementById('checkSubmissions');
+    if (checkSubmissionsBtn) {
+        checkSubmissionsBtn.addEventListener('click', function(e) {
+            var startTime = Date.now();
+            this.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Analyse...';
+            this.disabled = true;
+            
+            makeApiCall({
+                action: 'check_submissions'
+            }).then(function(response) {
+                var endTime = Date.now();
+                var duration = ((endTime - startTime) / 1000).toFixed(1);
+                
+                checkSubmissionsBtn.innerHTML = '<i class="fas fa-play"></i> Lancer Détection';
+                checkSubmissionsBtn.disabled = false;
+                
+                // Afficher les résultats
+                var resultDiv = document.getElementById('detectionResult');
+                var newSubmissions = response.new_submissions_count || 0;
+                var newAlerts = response.alerts_created || 0;
+                
+                resultDiv.innerHTML = '<small class="text-success"><i class="fas fa-check mr-1"></i>' +
+                    'Analyse terminée en ' + duration + 's : ' + newSubmissions + ' nouvelles soumissions analysées, ' +
+                    newAlerts + ' alertes créées</small>';
+                resultDiv.style.display = 'block';
+                
+                // Masquer après 5 secondes et recharger si nouvelles alertes
+                setTimeout(function() {
+                    resultDiv.style.display = 'none';
+                    if (newAlerts > 0) {
+                        location.reload();
+                    }
+                }, 5000);
+            }).catch(function() {
+                var endTime = Date.now();
+                var duration = ((endTime - startTime) / 1000).toFixed(1);
+                
+                checkSubmissionsBtn.innerHTML = '<i class="fas fa-play"></i> Lancer Détection';
+                checkSubmissionsBtn.disabled = false;
+                
+                var resultDiv = document.getElementById('detectionResult');
+                resultDiv.innerHTML = '<small class="text-danger"><i class="fas fa-exclamation-triangle mr-1"></i>' +
+                    'Erreur lors de l\'analyse complète après ' + duration + 's</small>';
+                resultDiv.style.display = 'block';
+                
+                setTimeout(function() {
+                    resultDiv.style.display = 'none';
+                }, 5000);
+            });
+        });
+    }
+    
+    // Search functionality for words - fixed
+    var searchWordsInput = document.getElementById('searchWords');
+    if (searchWordsInput) {
+        searchWordsInput.addEventListener('input', function() {
+            var searchTerm = this.value.toLowerCase();
+            var wordItems = document.querySelectorAll('.word-item');
+            
+            for (var i = 0; i < wordItems.length; i++) {
+                var wordText = wordItems[i].getAttribute('data-word');
+                var wordDisplay = wordItems[i].querySelector('.badge').textContent.toLowerCase();
+                
+                if (wordText.includes(searchTerm) || wordDisplay.includes(searchTerm)) {
+                    wordItems[i].classList.remove('hidden');
+                    wordItems[i].style.display = 'block';
+                } else {
+                    wordItems[i].classList.add('hidden');
+                    wordItems[i].style.display = 'none';
+                }
+            }
+        });
+    }
+    
+    // Search functionality for alerts - new feature
+    var searchAlertsInput = document.getElementById('searchAlerts');
+    if (searchAlertsInput) {
+        searchAlertsInput.addEventListener('input', function() {
+            var searchTerm = this.value.toLowerCase();
+            var alertRows = document.querySelectorAll('.alert-row');
+            
+            for (var i = 0; i < alertRows.length; i++) {
+                var userName = alertRows[i].getAttribute('data-user');
+                var wordDetected = alertRows[i].getAttribute('data-word');
+                var teamName = alertRows[i].getAttribute('data-team');
+                
+                if (userName.includes(searchTerm) || 
+                    wordDetected.includes(searchTerm) || 
+                    teamName.includes(searchTerm)) {
+                    alertRows[i].classList.remove('hidden');
+                    alertRows[i].style.display = 'table-row';
+                } else {
+                    alertRows[i].classList.add('hidden');
+                    alertRows[i].style.display = 'none';
+                }
+            }
+        });
+    }
+
+    // Full analysis button with confirmation
+    var fullAnalysisBtn = document.getElementById('fullAnalysis');
+    if (fullAnalysisBtn) {
+        fullAnalysisBtn.addEventListener('click', function(e) {
+            var confirmMessage = "⚠️ ATTENTION - ANALYSE COMPLÈTE ⚠️\n\n" +
+                            "Cette action va analyser TOUTES les soumissions du CTF.\n\n" +
+                            "IMPACT SUR LE SERVEUR :\n" +
+                            "• Temps de traitement : plusieurs minutes selon la taille\n" +
+                            "• Charge importante sur la base de données\n" +
+                            "• Possible ralentissement temporaire du CTFd\n" +
+                            "• Création potentielle de nombreuses alertes\n\n" +
+                            "⚠️ À utiliser uniquement en cas de besoin ⚠️\n\n" +
+                            "Voulez-vous vraiment continuer ?";
+            
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+            
+            var startTime = Date.now();
+            this.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Analyse Complète...';
+            this.disabled = true;
+            
+            makeApiCall({
+                action: 'full_analysis'
+            }).then(function(response) {
+                var endTime = Date.now();
+                var duration = ((endTime - startTime) / 1000).toFixed(1);
+                
+                fullAnalysisBtn.innerHTML = '<i class="fas fa-search-plus"></i> Analyser Tout';
+                fullAnalysisBtn.disabled = false;
+                
+                // Afficher les résultats
+                var resultDiv = document.getElementById('detectionResult');
+                var totalSubmissions = response.total_submissions || 0;
+                var newAlerts = response.alerts_created || 0;
+                
+                resultDiv.innerHTML = '<small class="text-warning"><i class="fas fa-check mr-1"></i>' +
+                    'Analyse COMPLÈTE terminée en ' + duration + 's : ' + totalSubmissions + ' soumissions totales analysées, ' +
+                    newAlerts + ' alertes créées</small>';
+                resultDiv.style.display = 'block';
+                
+                // Masquer après 8 secondes et recharger si nouvelles alertes
+                setTimeout(function() {
+                    resultDiv.style.display = 'none';
+                    if (newAlerts > 0) {
+                        location.reload();
+                    }
+                }, 8000);
+            }).catch(function() {
+                var endTime = Date.now();
+                var duration = ((endTime - startTime) / 1000).toFixed(1);
+                
+                fullAnalysisBtn.innerHTML = '<i class="fas fa-search-plus"></i> Analyser Tout';
+                fullAnalysisBtn.disabled = false;
+                
+                var resultDiv = document.getElementById('detectionResult');
+                resultDiv.innerHTML = '<small class="text-danger"><i class="fas fa-exclamation-triangle mr-1"></i>' +
+                    'Erreur lors de l\'analyse complète après ' + duration + 's</small>';
+                resultDiv.style.display = 'block';
+                
+                setTimeout(function() {
+                    resultDiv.style.display = 'none';
+                }, 5000);
+            });
+        });
+    }
+
+});
+
+
+</script>
+{% endblock %}
