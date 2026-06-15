@@ -3,6 +3,8 @@ from CTFd.models import db, Submissions, Users, Teams
 from CTFd.utils.decorators import admins_only
 from sqlalchemy.orm import joinedload
 
+BATCH_SIZE = 1000
+
 
 class ForbiddenWord(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -210,9 +212,6 @@ def load(app):
 
         elif action == 'full_analysis':
             forbidden_words = [w.word.lower() for w in ForbiddenWord.query.all()]
-            all_submissions = Submissions.query.filter(
-                Submissions.type != 'pending'
-            ).order_by(Submissions.id.asc()).all()
 
             existing_keys = {
                 (a.user_id, a.team_id, a.word, a.submission_id)
@@ -221,22 +220,38 @@ def load(app):
                 ).all()
             }
 
+            total_submissions = 0
             alerts_created = 0
-            for submission in all_submissions:
-                submitted_flag = submission.provided.lower() if submission.provided else ''
-                for word in forbidden_words:
-                    if word in submitted_flag:
-                        key = (submission.user_id, submission.team_id, word, submission.id)
-                        if key not in existing_keys:
-                            db.session.add(WordAlert(
-                                user_id=submission.user_id,
-                                team_id=submission.team_id,
-                                word=word,
-                                submission_id=submission.id,
-                                is_acknowledged=False
-                            ))
-                            existing_keys.add(key)
-                            alerts_created += 1
+            last_id = 0
+
+            while True:
+                batch = Submissions.query.filter(
+                    Submissions.type != 'pending',
+                    Submissions.id > last_id
+                ).order_by(Submissions.id.asc()).limit(BATCH_SIZE).all()
+
+                if not batch:
+                    break
+
+                for submission in batch:
+                    total_submissions += 1
+                    submitted_flag = submission.provided.lower() if submission.provided else ''
+                    for word in forbidden_words:
+                        if word in submitted_flag:
+                            key = (submission.user_id, submission.team_id, word, submission.id)
+                            if key not in existing_keys:
+                                db.session.add(WordAlert(
+                                    user_id=submission.user_id,
+                                    team_id=submission.team_id,
+                                    word=word,
+                                    submission_id=submission.id,
+                                    is_acknowledged=False
+                                ))
+                                existing_keys.add(key)
+                                alerts_created += 1
+
+                last_id = batch[-1].id
+                db.session.flush()
 
             db.session.commit()
 
@@ -244,7 +259,7 @@ def load(app):
                 'success': True,
                 'message': f"Analyse complète : {alerts_created} alerte(s) créée(s)",
                 'alerts_created': alerts_created,
-                'total_submissions': len(all_submissions)
+                'total_submissions': total_submissions
             })
 
         return jsonify({'success': False, 'message': 'Action invalide'})
